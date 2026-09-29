@@ -1,0 +1,255 @@
+package cc.crystalized;
+
+import com.mojang.brigadier.Command;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import com.mojang.brigadier.tree.LiteralCommandNode;
+import com.velocitypowered.api.command.BrigadierCommand;
+import com.velocitypowered.api.command.CommandSource;
+import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.proxy.ProxyServer;
+import com.velocitypowered.api.proxy.ServerConnection;
+import com.velocitypowered.api.proxy.server.RegisteredServer;
+import net.kyori.adventure.audience.Audience;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Stream;
+
+import static net.kyori.adventure.text.Component.text;
+import static net.kyori.adventure.text.Component.translatable;
+import static net.kyori.adventure.text.format.NamedTextColor.RED;
+import static net.kyori.adventure.text.format.NamedTextColor.YELLOW;
+
+public class AdminCommands {
+	static CompletableFuture<Suggestions> filteredSuggest(SuggestionsBuilder builder, Stream<String> candidates) {
+		String partial = builder.getRemaining().toLowerCase(Locale.ROOT);
+		candidates.filter(c -> c.toLowerCase(Locale.ROOT).startsWith(partial)).forEach(builder::suggest);
+		return builder.buildFuture();
+	}
+
+
+	public static BrigadierCommand createSendCommand(ProxyServer proxy) {
+		LiteralCommandNode<CommandSource> sendNode = BrigadierCommand.literalArgumentBuilder("send")
+				.requires(source -> !(source instanceof Player) || EventProxy.is_admin((Player) source))
+				.executes(ctx -> {
+					ctx.getSource().sendMessage(text("Usage: /send <player> <server>").color(RED));
+					return Command.SINGLE_SUCCESS;
+				})
+				.then(BrigadierCommand.requiredArgumentBuilder("player", StringArgumentType.word())
+						.suggests((ctx, builder) -> {
+							return filteredSuggest(builder, proxy.getAllPlayers().stream().map(Player::getUsername));
+							})
+						.then(BrigadierCommand.requiredArgumentBuilder("server", StringArgumentType.word())
+								.suggests((ctx, builder) -> {
+									return filteredSuggest(builder, proxy.getAllServers().stream().map(s -> s.getServerInfo().getName()));
+									})
+								.executes(ctx -> {
+									String playerName = ctx.getArgument("player", String.class);
+									String serverName = ctx.getArgument("server", String.class);
+									CommandSource source = ctx.getSource();
+									Optional<Player> target = proxy.getPlayer(playerName);
+									if (target.isEmpty()) {
+										source.sendMessage(text("Player not found: " + playerName).color(RED));
+										return Command.SINGLE_SUCCESS;
+									}
+									Optional<RegisteredServer> destination = proxy.getServer(serverName);
+									if (destination.isEmpty()) {
+										source.sendMessage(text("Server not found: " + serverName).color(RED));
+										return Command.SINGLE_SUCCESS;
+									}
+									target.get().createConnectionRequest(destination.get()).connect();
+									source.sendMessage(text("Sent " + target.get().getUsername() + " to " + destination.get().getServerInfo().getName()).color(NamedTextColor.GREEN));
+									return Command.SINGLE_SUCCESS;
+								})
+						)
+				)
+				.build();
+		return new BrigadierCommand(sendNode);
+	}
+
+	public static BrigadierCommand createHubCommand(ProxyServer proxy) {
+		LiteralCommandNode<CommandSource> hubNode = BrigadierCommand.literalArgumentBuilder("hub")
+				.executes(ctx -> {
+					if (ctx.getSource() instanceof Player p) {
+						Optional<ServerConnection> opt = p.getCurrentServer();
+						if(opt.isEmpty() || opt.get().getServer().getServerInfo().getName().contains("limbo")) {
+							return Command.SINGLE_SUCCESS;
+						}
+						Optional<RegisteredServer> lobby = proxy.getServer("lobby");
+						if (lobby.isEmpty()) {
+							p.sendMessage(text("Lobby server not found.").color(RED));
+							return Command.SINGLE_SUCCESS;
+						}
+						p.createConnectionRequest(lobby.get()).connect();
+					} else {
+						ctx.getSource().sendMessage(text("Only players can use this command.").color(RED));
+					}
+					return Command.SINGLE_SUCCESS;
+				})
+				.build();
+		return new BrigadierCommand(hubNode);
+	}
+
+	public static BrigadierCommand createMsgCommand(ProxyServer proxy) {
+		LiteralCommandNode<CommandSource> msgNode = BrigadierCommand.literalArgumentBuilder("msg")
+				.executes(ctx -> {
+					ctx.getSource().sendMessage(text("Usage: /msg <player> <message>").color(RED));
+					return Command.SINGLE_SUCCESS;
+				})
+				.then(BrigadierCommand.requiredArgumentBuilder("player", StringArgumentType.word())
+						.suggests((ctx, builder) -> {
+							return filteredSuggest(builder, proxy.getAllPlayers().stream().map(Player::getUsername));
+							})
+						.then(BrigadierCommand.requiredArgumentBuilder("message", StringArgumentType.greedyString())
+								.executes(ctx -> {
+									String targetName = ctx.getArgument("player", String.class);
+									String rawMessage = ctx.getArgument("message", String.class);
+									CommandSource source = ctx.getSource();
+									Player target = proxy.getPlayer(targetName).orElse(null);
+									if (target == null) {
+										source.sendMessage(translatable("crystalized.proxy.msg.not_found").color(RED));
+										return Command.SINGLE_SUCCESS;
+									}
+									String messengerName = "Console";
+									if (source instanceof Player sender) {
+										messengerName = sender.getUsername();
+										/*
+										if (!Settings.isAllowed("dms", target, sender)) {
+											source.sendMessage(translatable("crystalized.proxy.msg.not_allowed", List.of(Component.text(target.getUsername()))).color(RED));
+											return Command.SINGLE_SUCCESS;
+										}
+										 */
+									}
+									Component message = text(" " + rawMessage);
+									source.sendMessage(text("[").append(translatable("crystalized.generic.you")).append(text(" -> " + target.getUsername() + "] ")).append(message).color(NamedTextColor.AQUA));
+									target.sendMessage(text("[" + messengerName + " -> ").append(translatable("crystalized.generic.you")).append(text("] ")).append(message).color(NamedTextColor.AQUA));
+									return Command.SINGLE_SUCCESS;
+								})
+						)
+				)
+				.build();
+		return new BrigadierCommand(msgNode);
+	}
+
+	public static BrigadierCommand createBroadcastCommand(ProxyServer proxy) {
+		LiteralCommandNode<CommandSource> broadcastNode = BrigadierCommand.literalArgumentBuilder("broadcast")
+				.requires(source -> !(source instanceof Player) || EventProxy.is_admin((Player) source))
+				.executes(ctx -> {
+					ctx.getSource().sendMessage(text("Usage: /broadcast <message>").color(RED));
+					return Command.SINGLE_SUCCESS;
+				})
+				.then(BrigadierCommand.requiredArgumentBuilder("message", StringArgumentType.greedyString())
+						.executes(ctx -> {
+							String rawMessage = ctx.getArgument("message", String.class);
+							Component message = translatable("crystalized.generic.broadcast").color(YELLOW);
+							message = message.append(text(rawMessage));
+							message = message.append(text("\n"));
+							Audience.audience(proxy.getAllPlayers()).sendMessage(message);
+							return Command.SINGLE_SUCCESS;
+						})
+				)
+				.build();
+		return new BrigadierCommand(broadcastNode);
+	}
+
+	public static BrigadierCommand createPlayerinfoCommand(ProxyServer proxy, EventProxy plugin) {
+		LiteralCommandNode<CommandSource> playerinfoNode = BrigadierCommand.literalArgumentBuilder("playerinfo")
+				.requires(source -> !(source instanceof Player) || EventProxy.is_admin((Player) source))
+				.executes(ctx -> {
+					ctx.getSource().sendMessage(text("Usage: /playerinfo <player>").color(RED));
+					return Command.SINGLE_SUCCESS;
+				})
+				.then(BrigadierCommand.requiredArgumentBuilder("player", StringArgumentType.word())
+						.suggests((ctx, builder) -> {
+							return filteredSuggest(builder, proxy.getAllPlayers().stream().map(Player::getUsername));
+							})
+						.executes(ctx -> {
+							String name = ctx.getArgument("player", String.class);
+							CommandSource source = ctx.getSource();
+							Player online = proxy.getPlayer(name).orElse(null);
+							UUID uuid;
+							if (online != null) {
+								uuid = online.getUniqueId();
+							} else {
+								uuid = Databases.getUUID(name);
+								if (uuid == null) {
+									source.sendMessage(text("Player not found: " + name).color(RED));
+									return Command.SINGLE_SUCCESS;
+								}
+							}
+							sendPlayerinfo(source, plugin, name, uuid, online);
+							return Command.SINGLE_SUCCESS;
+						})
+				)
+				.build();
+		return new BrigadierCommand(playerinfoNode);
+	}
+
+	private static void sendPlayerinfo(CommandSource source, EventProxy plugin, String name, UUID uuid, Player online) {
+		source.sendMessage(text("Player info: " + name + (online != null ? " (online)" : " (offline)")).color(NamedTextColor.AQUA));
+		source.sendMessage(text("UUID: " + uuid));
+		if (online != null) {
+			source.sendMessage(text("Server: " + online.getCurrentServer().map(c -> c.getServerInfo().getName()).orElse("-")));
+		}
+
+		HashMap<String, Object> data = Databases.fetchPlayerData(uuid);
+		if (data == null) {
+			source.sendMessage(text("No database entry.").color(RED));
+			return;
+		}
+		source.sendMessage(text("Account:").color(NamedTextColor.AQUA));
+		source.sendMessage(text("  first login: " + formatEpoch(data.get("first_login")) + ", last login: " + formatEpoch(data.get("last_login")) + ", logins: " + str(data.get("times_logged_in"))));
+		source.sendMessage(text("  level: " + str(data.get("level")) + ", exp to next: " + str(data.get("exp_to_next_lvl")) + ", money: " + str(data.get("money")) + ", rank: " + str(data.get("rank_id"))));
+
+		HashMap<String, Object> settings = Databases.fetchSettings(uuid);
+		if (settings == null) {
+			source.sendMessage(text("Settings: no data"));
+		} else {
+			source.sendMessage(text("Settings:").color(NamedTextColor.AQUA));
+			for (String key : settings.keySet()) {
+				if (key.equals("player_uuid")) {
+					continue;
+				}
+				source.sendMessage(text("  " + key + ": " + str(settings.get(key))));
+			}
+		}
+
+	}
+
+	private static String str(Object o) {
+		return o == null ? "-" : o.toString();
+	}
+
+	private static String yesNo(Object o) {
+		if (o == null) {
+			return "-";
+		}
+		return ((Number) o).intValue() == 1 ? "yes" : "no";
+	}
+
+	private static String formatEpoch(Object o) {
+		if (o == null) {
+			return "-";
+		}
+		long seconds = ((Number) o).longValue();
+		if (seconds <= 0) {
+			return "-";
+		}
+		return DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault()).format(Instant.ofEpochSecond(seconds));
+	}
+
+	private static String formatTenths(Object o) {
+		if (o == null) {
+			return "-";
+		}
+		long tenths = ((Number) o).longValue();
+		return (tenths / 10) + "." + Math.abs(tenths % 10) + "s";
+	}
+}
