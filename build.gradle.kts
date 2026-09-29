@@ -1,0 +1,35 @@
+plugins {
+    id("java")
+    id("com.gradleup.shadow") version "8.3.3"
+}
+
+group = "cc.crystalized.velocity"
+version = "1.0-SNAPSHOT"
+
+repositories {
+    mavenCentral()
+    maven {
+        name = "papermc"
+        url = uri("https://repo.papermc.io/repository/maven-public/")
+    }
+    maven{
+        url = uri("https://repo.opencollab.dev/main/")
+    }
+}
+
+dependencies {
+    implementation("org.xerial:sqlite-jdbc:3.53.2.1")
+
+    compileOnly("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
+    annotationProcessor("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
+
+    compileOnly("org.geysermc.floodgate:api:2.2.3-SNAPSHOT")
+
+    testImplementation("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(25))
+    }
+}
