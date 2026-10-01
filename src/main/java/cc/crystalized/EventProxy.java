@@ -1,15 +1,22 @@
 package cc.crystalized;
 
+import com.google.common.io.ByteArrayDataInput;
+import com.google.common.io.ByteStreams;
 import com.google.inject.Inject;
 import com.velocitypowered.api.command.CommandManager;
 import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.command.CommandExecuteEvent;
+import com.velocitypowered.api.event.connection.PluginMessageEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
+import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.slf4j.Logger;
+
+import static net.kyori.adventure.text.Component.text;
 
 public class EventProxy {
     public static final MinecraftChannelIdentifier CRYSTAL_CHANNEL = MinecraftChannelIdentifier.from("crystalized:main");
@@ -18,6 +25,7 @@ public class EventProxy {
     public static Logger logger;
     public static BanCommand ban_command;
     public static UnbanCommand unban_command;
+    public static Event event;
 
     @Inject
     public EventProxy(ProxyServer server, Logger logger) {
@@ -42,6 +50,8 @@ public class EventProxy {
     public void onProxyInitialization(ProxyInitializeEvent event) {
         server.getChannelRegistrar().register(CRYSTAL_CHANNEL);
         server.getChannelRegistrar().register(CRYSTALIZED_ESSENTIALS);
+
+        new EventConfig(server, logger);
 
         CommandManager commandManager = server.getCommandManager();
 
@@ -95,6 +105,38 @@ public class EventProxy {
             return true;
         } else {
             return false;
+        }
+    }
+
+    @Subscribe
+    public void onPluginMessageFromBackend(PluginMessageEvent event) {
+        if (!CRYSTAL_CHANNEL.equals(event.getIdentifier())) {
+            return;
+        }
+        if (event.getIdentifier().equals(CRYSTALIZED_ESSENTIALS)) {
+            event.getTarget().sendPluginMessage(CRYSTALIZED_ESSENTIALS, event.getData());
+            return;
+        }
+        event.setResult(PluginMessageEvent.ForwardResult.handled());
+        if (!(event.getSource() instanceof ServerConnection backend_conn)) {
+            return;
+        }
+
+        ByteArrayDataInput in = ByteStreams.newDataInput(event.getData());
+        String message1 = in.readUTF();
+        if (!(message1.contains("Connect"))) {
+            return;
+        }
+
+        String message2 = in.readUTF();
+        if (message2.contains("lobby")) {
+            server.getServer("lobby").ifPresentOrElse(
+                    lobby -> backend_conn.getPlayer().createConnectionRequest(lobby).connect(),
+                    () -> backend_conn.getPlayer().sendMessage(text("[QueueSystem] Lobby server not found.", NamedTextColor.RED))
+            );
+            if(Match.getRunningMatch(backend_conn.getPlayer().getUsername()) != null){
+                Match.getRunningMatch(backend_conn.getPlayer().getUsername()).end();
+            }
         }
     }
 }

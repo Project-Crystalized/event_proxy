@@ -159,6 +159,33 @@ public class AdminCommands {
 		return new BrigadierCommand(broadcastNode);
 	}
 
+	public static BrigadierCommand createEventCommand(ProxyServer proxy) {
+		LiteralCommandNode<CommandSource> broadcastNode = BrigadierCommand.literalArgumentBuilder("event")
+				.requires(source -> !(source instanceof Player) || EventProxy.is_admin((Player) source))
+				.executes(ctx -> {
+					ctx.getSource().sendMessage(text("Usage: /broadcast <message>").color(RED));
+					return Command.SINGLE_SUCCESS;
+				})
+				.then(BrigadierCommand.requiredArgumentBuilder("message", StringArgumentType.greedyString())
+						.suggests((ctx, builder) -> {
+							return filteredSuggest(builder, Stream.of("start", "pause", "end"));
+							})
+						.executes(ctx -> {
+							String arg = ctx.getArgument("arg", String.class);
+							if(arg.equals("start")){
+								EventProxy.event.start();
+							}else if(arg.equals("pause")){
+								EventProxy.event.pause();
+							}else if(arg.equals("end")){
+								EventProxy.event.end();
+							}
+							return Command.SINGLE_SUCCESS;
+						})
+				)
+				.build();
+		return new BrigadierCommand(broadcastNode);
+	}
+
 	public static BrigadierCommand createPlayerinfoCommand(ProxyServer proxy, EventProxy plugin) {
 		LiteralCommandNode<CommandSource> playerinfoNode = BrigadierCommand.literalArgumentBuilder("playerinfo")
 				.requires(source -> !(source instanceof Player) || EventProxy.is_admin((Player) source))
