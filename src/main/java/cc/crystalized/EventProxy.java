@@ -3,6 +3,7 @@ package cc.crystalized;
 import com.google.common.io.ByteArrayDataInput;
 import com.google.common.io.ByteStreams;
 import com.google.inject.Inject;
+import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.command.CommandManager;
 import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.event.Subscribe;
@@ -13,16 +14,26 @@ import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
+import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.slf4j.Logger;
 
 import static net.kyori.adventure.text.Component.text;
 
+@Plugin(
+        id = "eventproxy",
+        name = "Event Proxy",
+        version = "1.0.0",
+        description = "Proxy for Crystalized Events",
+        authors = {"LadyCat"}
+)
 public class EventProxy {
     public static final MinecraftChannelIdentifier CRYSTAL_CHANNEL = MinecraftChannelIdentifier.from("crystalized:main");
     public static final MinecraftChannelIdentifier CRYSTALIZED_ESSENTIALS = MinecraftChannelIdentifier.from("crystalized:essentials");
     public final ProxyServer server;
     public static Logger logger;
+
+    public static EventProxy plugin;
     public static BanCommand ban_command;
     public static UnbanCommand unban_command;
     public static Event event;
@@ -31,6 +42,7 @@ public class EventProxy {
     public EventProxy(ProxyServer server, Logger logger) {
         this.server = server;
         EventProxy.logger = logger;
+        plugin = this;
     }
 
     @Subscribe
@@ -75,6 +87,12 @@ public class EventProxy {
         CommandMeta commandMetaSend = commandManager.metaBuilder("send").plugin(this).build();
         commandManager.register(commandMetaSend, AdminCommands.createSendCommand(server));
 
+        CommandMeta commandMetaEvent = commandManager.metaBuilder("event").plugin(this).build();
+        commandManager.register(commandMetaEvent, AdminCommands.createEventCommand(server));
+
+        CommandMeta commandMetaReady = commandManager.metaBuilder("ready").plugin(this).build();
+        commandManager.register(commandMetaReady, AdminCommands.createReadyCommand(server));
+
         CommandMeta commandMetaPlayerinfo = commandManager.metaBuilder("playerinfo").plugin(this).build();
         commandManager.register(commandMetaPlayerinfo, AdminCommands.createPlayerinfoCommand(server, this));
     }
@@ -105,6 +123,13 @@ public class EventProxy {
             return true;
         } else {
             return false;
+        }
+    }
+
+    public static void messageAdmin(Component c){
+        for(Player p : Event.server.getAllPlayers()){
+            if(!is_admin(p)) continue;
+            p.sendMessage(c);
         }
     }
 

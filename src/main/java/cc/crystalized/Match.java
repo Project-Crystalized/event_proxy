@@ -9,10 +9,10 @@ import com.velocitypowered.api.proxy.server.RegisteredServer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
-public class Match {
+public class Match{
     private static int nextID = 0;
     final int id;
     RegisteredServer server = null;
@@ -45,6 +45,9 @@ public class Match {
     }
 
     public static boolean generateMatches(){
+        if(EventProxy.event.paused || !EventProxy.event.running){
+            return false;
+        }
         int lower = EventProxy.event.teams.getFirst().gamesThisRound;
         for(Team t : EventProxy.event.teams){
             if(t.gamesThisRound < lower){
@@ -184,25 +187,27 @@ public class Match {
         next.start();
     }
 
-    public void start(){
+    public boolean start(){
         running = true;
         server = game.getFreeServer();
-        if(server == null) return;
+        if(server == null) return false;
+        //TODO ready check
         EventProxy.event.runningMatches.add(this);
         //TODO countdowns and delays
-        //TODO ready checks
         for(Team t : teams){
             Player play = null;
-            for(String player : t.players.keySet()){
+            for(String player : t.players.stream().map(pd -> pd.name).toList()){
                 if(!Event.server.getPlayer(player).isPresent()){
                     //TODO do stuff for when player is offline
+                    return false;
                 }
                 Player p = Event.server.getPlayer(player).get();
                 play = p;
                 p.createConnectionRequest(server);
             }
-            play.getCurrentServer().get().sendPluginMessage(EventProxy.CRYSTAL_CHANNEL, update_message(t.players.keySet()).toByteArray());
+            play.getCurrentServer().get().sendPluginMessage(EventProxy.CRYSTAL_CHANNEL, update_message(t.players.stream().map(pd -> pd.name).toList()).toByteArray());
         }
+        return true;
     }
 
     public static ArrayList<Match> getPreviousMatches(Team t){
@@ -247,7 +252,7 @@ public class Match {
         return fin;
     }
 
-    public ByteArrayDataOutput update_message(Set<String> players) {
+    public ByteArrayDataOutput update_message(List<String> players) {
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeUTF("Event");
         for (String p : players) {

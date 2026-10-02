@@ -19,7 +19,7 @@ public class EventConfig {
         this.server = server;
         this.logger = logger;
         try {
-            final String directory = Files.readString(Paths.get(System.getProperty("user.home") + "/databases/event_dbs"));
+            final String directory = Files.readString(Paths.get(System.getProperty("user.home") + "/databases/event_dbs/event_config.json"));
             JsonObject json = JsonParser.parseString(directory).getAsJsonObject();
 
             JsonElement v = json.get("version");
@@ -33,12 +33,12 @@ public class EventConfig {
             JsonArray games = json.get("games").getAsJsonArray();
             for(JsonElement j : games){
                 JsonObject o = json.get(j.getAsString()).getAsJsonObject();
-                game.add(new Game(j.getAsString(), o.get("match_type").getAsString(), o.get("amount_of_games").getAsInt(), o.get("amount_of_teams").getAsInt()));
+                game.add(new Game(j.getAsString(), o.get("match_type").getAsString(), o.get("amount_of_games").getAsInt(), o.get("max_team_amount").getAsInt()));
             }
 
             Map<String, JsonElement> map = json.getAsJsonObject("teams").asMap();
             for(String s : map.keySet()){
-                JsonObject o = json.get(s).getAsJsonObject();
+                JsonObject o = map.get(s).getAsJsonObject();
                 teams.add(new Team(o.get("name").getAsString(), o.get("color").getAsString(), getTeam(o.get("players").getAsJsonArray())));
             }
 

@@ -163,12 +163,12 @@ public class AdminCommands {
 		LiteralCommandNode<CommandSource> broadcastNode = BrigadierCommand.literalArgumentBuilder("event")
 				.requires(source -> !(source instanceof Player) || EventProxy.is_admin((Player) source))
 				.executes(ctx -> {
-					ctx.getSource().sendMessage(text("Usage: /broadcast <message>").color(RED));
+					ctx.getSource().sendMessage(text("Usage: /event <arg>").color(RED));
 					return Command.SINGLE_SUCCESS;
 				})
-				.then(BrigadierCommand.requiredArgumentBuilder("message", StringArgumentType.greedyString())
+				.then(BrigadierCommand.requiredArgumentBuilder("arg", StringArgumentType.greedyString())
 						.suggests((ctx, builder) -> {
-							return filteredSuggest(builder, Stream.of("start", "pause", "end"));
+							return filteredSuggest(builder, Stream.of("start", "pause", "end", "continue"));
 							})
 						.executes(ctx -> {
 							String arg = ctx.getArgument("arg", String.class);
@@ -178,12 +178,28 @@ public class AdminCommands {
 								EventProxy.event.pause();
 							}else if(arg.equals("end")){
 								EventProxy.event.end();
+							}else if(arg.equals("continue")){
+								EventProxy.event.endPause();
 							}
 							return Command.SINGLE_SUCCESS;
 						})
 				)
 				.build();
 		return new BrigadierCommand(broadcastNode);
+	}
+
+	public static BrigadierCommand createReadyCommand(ProxyServer proxy) {
+		LiteralCommandNode<CommandSource> hubNode = BrigadierCommand.literalArgumentBuilder("ready")
+				.executes(ctx -> {
+					if (ctx.getSource() instanceof Player p && PlayerData.getPlayerData(p.getUsername()) != null) {
+						PlayerData.getPlayerData(p.getUsername()).ready = true;
+					} else {
+						ctx.getSource().sendMessage(text("Only players in the event can use this command.").color(RED));
+					}
+					return Command.SINGLE_SUCCESS;
+				})
+				.build();
+		return new BrigadierCommand(hubNode);
 	}
 
 	public static BrigadierCommand createPlayerinfoCommand(ProxyServer proxy, EventProxy plugin) {
