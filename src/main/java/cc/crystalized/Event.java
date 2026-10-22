@@ -129,7 +129,7 @@ class Team{
         this.color = color;
         this.players = players.stream().map(s -> new PlayerData(s, 0)).toList();
     }
-
+    //test test
     public long sendReadyCheck(){
         for(PlayerData pd : players){
             Optional<Player> player = Event.server.getPlayer(pd.name);
